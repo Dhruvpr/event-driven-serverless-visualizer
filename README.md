@@ -56,7 +56,7 @@ Since this is a client-side web application, no backend installation or API keys
 
 Clone the repository:
 
-git clone [https://github.com/your-username/serverless-order-system.git](https://github.com/your-username/serverless-order-system.git)
+git clone [https://github.com/your-username/serverless-order-system.git]( https://dhruvpr.github.io/event-driven-serverless-visualizer/)
 
 
 Navigate to the folder:
