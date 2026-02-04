@@ -1,0 +1,387 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CloudWatch Glow | Serverless Order System</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;600;800&family=JetBrains+Mono:wght@400;500&display=swap');
+
+        :root {
+            --aws-orange: #FF9900;
+            --aws-sqs: #FF4F8B;
+            --aws-dynamodb: #2E73B8;
+            --aws-ses: #3B9138;
+            --aws-cw: #C925D1; /* Magenta for CloudWatch */
+        }
+
+        body {
+            font-family: 'Plus Jakarta Sans', sans-serif;
+            background-color: #020617;
+            color: #f8fafc;
+            overflow: hidden;
+            height: 100vh;
+        }
+
+        /* --- CLOUDWATCH GLOW EFFECTS --- */
+        .cw-node-active {
+            filter: drop-shadow(0 0 25px var(--aws-cw));
+            border-color: var(--aws-cw) !important;
+            background: rgba(201, 37, 209, 0.15) !important;
+        }
+
+        .metric-card {
+            background: rgba(15, 23, 42, 0.6);
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .metric-glow {
+            animation: metric-pulse 1s ease-out;
+        }
+
+        @keyframes metric-pulse {
+            0% { box-shadow: 0 0 0px var(--aws-cw); border-color: var(--aws-cw); }
+            50% { box-shadow: 0 0 30px var(--aws-cw); border-color: var(--aws-cw); }
+            100% { box-shadow: 0 0 0px transparent; border-color: rgba(255, 255, 255, 0.05); }
+        }
+
+        /* --- TERMINAL GLOW --- */
+        #logStream {
+            text-shadow: 0 0 5px rgba(255, 255, 255, 0.1);
+        }
+
+        .log-entry {
+            border-left: 2px solid transparent;
+            padding-left: 10px;
+            transition: all 0.3s ease;
+        }
+
+        .log-entry-glow {
+            border-left-color: var(--aws-cw);
+            background: linear-gradient(90deg, rgba(201, 37, 209, 0.1) 0%, transparent 100%);
+            text-shadow: 0 0 8px var(--aws-cw);
+            color: white !important;
+        }
+
+        /* Scanning line effect on logs */
+        .terminal-container::after {
+            content: " ";
+            position: absolute;
+            top: 0; left: 0; bottom: 0; right: 0;
+            background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.25) 50%), 
+                        linear-gradient(90deg, rgba(255, 0, 0, 0.06), rgba(0, 255, 0, 0.02), rgba(0, 0, 255, 0.06));
+            background-size: 100% 2px, 3px 100%;
+            pointer-events: none;
+            z-index: 10;
+        }
+
+        /* --- NODES & PATHS --- */
+        .service-card {
+            background: rgba(30, 41, 59, 0.4);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 20px;
+            transition: all 0.4s ease;
+        }
+
+        .active-node {
+            border-color: var(--accent-color);
+            box-shadow: 0 0 25px var(--accent-glow);
+            transform: translateY(-5px);
+        }
+
+        .conduit { stroke: rgba(255, 255, 255, 0.05); stroke-width: 2; fill: none; }
+        .telemetry-conduit { stroke-dasharray: 5, 8; opacity: 0.2; }
+        
+        .pulse {
+            fill: none; stroke-width: 4; stroke-dasharray: 10, 50;
+            opacity: 0; filter: drop-shadow(0 0 8px currentColor);
+        }
+        .streaming { animation: flow 1s linear infinite; opacity: 1 !important; }
+        @keyframes flow { to { stroke-dashoffset: -60; } }
+
+        .custom-scroll::-webkit-scrollbar { width: 3px; }
+        .custom-scroll::-webkit-scrollbar-thumb { background: #334155; }
+    </style>
+</head>
+<body class="flex flex-col">
+
+    <!-- Navbar -->
+    <nav class="h-16 px-10 flex items-center justify-between bg-[#020617] border-b border-white/5 z-50">
+        <div class="flex items-center gap-4">
+            <div class="bg-orange-500 p-2 rounded-xl text-white shadow-lg shadow-orange-500/20">
+                <i class="fas fa-microchip"></i>
+            </div>
+            <div>
+                <h1 class="text-xl font-black tracking-tight text-white">OrderPulse <span class="text-orange-500">CloudWatch</span></h1>
+                <p class="text-[9px] font-bold text-slate-500 uppercase tracking-[0.3em]">Event-Driven Monitoring Engine</p>
+            </div>
+        </div>
+        <div class="flex gap-8">
+            <div class="flex flex-col items-end">
+                <span class="text-[9px] font-black text-slate-500 uppercase">System Latency</span>
+                <span class="text-xs font-mono font-bold text-orange-500" id="global-latency">0ms</span>
+            </div>
+            <div class="flex flex-col items-end">
+                <span class="text-[9px] font-black text-slate-500 uppercase">CloudWatch Link</span>
+                <span class="text-xs font-bold text-green-400 flex items-center gap-2">
+                    <span class="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse"></span> CONNECTED
+                </span>
+            </div>
+        </div>
+    </nav>
+
+    <div class="flex-1 flex overflow-hidden">
+        
+        <!-- Left Sidebar: The Form -->
+        <aside class="w-80 bg-slate-900/30 border-r border-white/5 p-8 flex flex-col gap-8 z-20 backdrop-blur-md">
+            <div>
+                <h2 class="text-lg font-black text-white">Order Ingress</h2>
+                <p class="text-[10px] text-slate-500 font-bold uppercase tracking-widest mt-1">Start Architecture Trace</p>
+            </div>
+
+            <form id="orderForm" onsubmit="event.preventDefault(); startTrace();" class="space-y-6">
+                <div class="space-y-2">
+                    <label class="text-[9px] font-black text-slate-400 uppercase tracking-widest">Customer</label>
+                    <input id="email" type="email" value="architect@aws.cloud" class="w-full p-4 bg-slate-950 border border-white/10 rounded-2xl text-sm font-bold outline-none focus:border-orange-500 transition-all text-slate-300">
+                </div>
+                <div class="space-y-2">
+                    <label class="text-[9px] font-black text-slate-400 uppercase tracking-widest">Resource Plan</label>
+                    <select id="plan" class="w-full p-4 bg-slate-950 border border-white/10 rounded-2xl text-sm font-bold outline-none cursor-pointer text-slate-300">
+                        <option>Serverless Tier (Lambda)</option>
+                        <option>Provisioned Tier (Fargate)</option>
+                    </select>
+                </div>
+                <button id="submitBtn" type="submit" class="w-full py-5 bg-orange-600 hover:bg-orange-500 text-white font-black rounded-2xl text-xs uppercase tracking-[0.2em] transition-all shadow-2xl shadow-orange-900/20 active:scale-95">
+                    Dispatch Order
+                </button>
+            </form>
+
+            <div class="mt-auto p-5 rounded-3xl bg-white/5 border border-white/5">
+                <div class="flex items-center gap-3 mb-3">
+                    <i class="fas fa-info-circle text-orange-500"></i>
+                    <span class="text-[10px] font-black uppercase tracking-widest">Trace Info</span>
+                </div>
+                <p class="text-[11px] text-slate-500 leading-relaxed font-medium">This visualizes the <b>asynchronous lifecycle</b> of a serverless order, utilizing SQS for high-availability buffering.</p>
+            </div>
+        </aside>
+
+        <!-- Center: The Architecture -->
+        <main class="flex-1 relative bg-[#020617] p-12 flex flex-col items-center justify-center">
+            <svg id="svg-canvas" class="absolute inset-0 w-full h-full pointer-events-none z-0"></svg>
+
+            <div class="relative z-10 w-full flex flex-col items-center gap-24">
+                
+                <!-- CloudWatch Apex -->
+                <div id="node-cw" class="flex flex-col items-center gap-3 transition-all duration-500">
+                    <div class="w-20 h-20 rounded-[2.5rem] bg-slate-900 border-2 border-dashed border-white/10 flex items-center justify-center transition-all duration-300">
+                        <i class="fas fa-magnifying-glass-chart text-2xl text-slate-600"></i>
+                    </div>
+                    <span class="text-[10px] font-black text-slate-500 uppercase tracking-[0.3em]">Amazon CloudWatch</span>
+                </div>
+
+                <!-- Pipeline -->
+                <div class="flex items-center justify-center gap-10 lg:gap-14">
+                    
+                    <div id="node-val" class="flex flex-col items-center gap-4" style="--accent-color: var(--aws-orange); --accent-glow: rgba(255, 153, 0, 0.3);">
+                        <div class="service-card p-5"><div class="w-14 h-14 bg-slate-950 rounded-xl flex items-center justify-center border border-white/5"><i class="fas fa-bolt text-xl text-slate-600"></i></div></div>
+                        <span class="text-[9px] font-black text-slate-500 uppercase">Lambda: Val</span>
+                    </div>
+
+                    <div id="node-sqs" class="flex flex-col items-center gap-4" style="--accent-color: var(--aws-sqs); --accent-glow: rgba(255, 79, 139, 0.3);">
+                        <div class="service-card p-5"><div class="w-14 h-14 bg-slate-950 rounded-xl flex items-center justify-center border border-white/5"><i class="fas fa-layer-group text-xl text-slate-600"></i></div></div>
+                        <span class="text-[9px] font-black text-slate-500 uppercase">Amazon SQS</span>
+                    </div>
+
+                    <div id="node-proc" class="flex flex-col items-center gap-4" style="--accent-color: var(--aws-orange); --accent-glow: rgba(255, 153, 0, 0.3);">
+                        <div class="service-card p-5"><div class="w-14 h-14 bg-slate-950 rounded-xl flex items-center justify-center border border-white/5"><i class="fas fa-gears text-xl text-slate-600"></i></div></div>
+                        <span class="text-[9px] font-black text-slate-500 uppercase">Lambda: Proc</span>
+                    </div>
+
+                    <div class="flex flex-col gap-10">
+                        <div id="node-db" class="flex items-center gap-4" style="--accent-color: #2E73B8; --accent-glow: rgba(46, 115, 184, 0.3);">
+                            <div class="service-card p-3"><div class="w-10 h-10 bg-slate-950 rounded-lg flex items-center justify-center border border-white/5"><i class="fas fa-database text-slate-600 text-sm"></i></div></div>
+                            <span class="text-[8px] font-black text-slate-500 uppercase">DynamoDB</span>
+                        </div>
+                        <div id="node-ses" class="flex items-center gap-4" style="--accent-color: #3B9138; --accent-glow: rgba(59, 145, 56, 0.3);">
+                            <div class="service-card p-3"><div class="w-10 h-10 bg-slate-950 rounded-lg flex items-center justify-center border border-white/5"><i class="fas fa-paper-plane text-slate-600 text-sm"></i></div></div>
+                            <span class="text-[8px] font-black text-slate-500 uppercase">SES Email</span>
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+        </main>
+
+        <!-- Right Sidebar: CloudWatch Logs -->
+        <aside class="w-[450px] bg-black/40 border-l border-white/5 flex flex-col shrink-0 backdrop-blur-xl">
+            <!-- Metrics Panel -->
+            <div class="p-8 border-b border-white/5 bg-slate-900/20">
+                <div class="flex justify-between items-center mb-6">
+                    <span class="text-[10px] font-black text-magenta-500 uppercase tracking-[0.2em]">Real-time Metrics</span>
+                    <span class="text-[9px] font-bold text-slate-600">REFRESH: 1s</span>
+                </div>
+                <div class="grid grid-cols-2 gap-4">
+                    <div id="metric-box-1" class="metric-card p-4 rounded-2xl">
+                        <span class="text-[8px] font-bold text-slate-500 uppercase block mb-1">Invocations</span>
+                        <div class="text-3xl font-mono font-black text-white" id="m-inv">0</div>
+                    </div>
+                    <div id="metric-box-2" class="metric-card p-4 rounded-2xl">
+                        <span class="text-[8px] font-bold text-slate-500 uppercase block mb-1">Queue Depth</span>
+                        <div class="text-3xl font-mono font-black text-white" id="m-queue">0</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Glowing Terminal -->
+            <div class="flex-1 p-8 flex flex-col min-h-0 relative terminal-container">
+                <div class="flex items-center justify-between mb-4">
+                    <div class="flex items-center gap-3">
+                        <i class="fas fa-list-ul text-magenta-500 text-xs"></i>
+                        <span class="text-[10px] font-black text-slate-400 uppercase tracking-widest">Log Stream: us-east-1.order-system</span>
+                    </div>
+                    <span class="text-[9px] font-mono text-slate-600" id="trace-id">ID: NONE</span>
+                </div>
+                <div id="logStream" class="flex-1 overflow-y-auto custom-scroll font-mono text-[11px] text-slate-500 space-y-3 pr-2">
+                    <div class="opacity-30 italic">[SYS] Telemetry ingestion engine ready. Awaiting ingress...</div>
+                </div>
+            </div>
+        </aside>
+    </div>
+
+    <script>
+        const logStream = document.getElementById('logStream');
+        const submitBtn = document.getElementById('submitBtn');
+
+        function writeLog(msg, type = "info") {
+            const time = new Date().toLocaleTimeString([], { hour12: false, fractionalSecondDigits: 3 });
+            const entry = document.createElement('div');
+            entry.className = `log-entry ${type === 'cw' ? 'log-entry-glow' : ''}`;
+            
+            let color = "text-slate-500";
+            if(type === 'success') color = "text-emerald-400 font-bold";
+            if(type === 'trigger') color = "text-white font-bold";
+            if(type === 'cw') color = "text-magenta-400";
+
+            entry.innerHTML = `<span class="opacity-30 text-[9px] mr-2">${time}</span> <span class="${color}">${msg}</span>`;
+            
+            logStream.appendChild(entry);
+            logStream.scrollTop = logStream.scrollHeight;
+
+            // Trigger CloudWatch node glow if it's a CW type log
+            if(type === 'cw') {
+                document.getElementById('node-cw').classList.add('cw-node-active');
+                setTimeout(() => document.getElementById('node-cw').classList.remove('cw-node-active'), 500);
+            }
+        }
+
+        function drawPaths() {
+            const svg = document.getElementById('svg-canvas');
+            svg.innerHTML = '';
+            const rect = svg.getBoundingClientRect();
+            
+            const paths = [
+                { s: 'orderForm', e: 'node-val', c: 'var(--aws-orange)' },
+                { s: 'node-val', e: 'node-sqs', c: 'var(--aws-sqs)' },
+                { s: 'node-sqs', e: 'node-proc', c: 'var(--aws-orange)' },
+                { s: 'node-proc', e: 'node-db', c: '#2E73B8' },
+                { s: 'node-proc', e: 'node-ses', c: '#3B9138' },
+                // Telemetry (CloudWatch Arcs)
+                { s: 'node-val', e: 'node-cw', c: 'var(--aws-cw)', t: true },
+                { s: 'node-proc', e: 'node-cw', c: 'var(--aws-cw)', t: true }
+            ];
+
+            paths.forEach((p, i) => {
+                const s = document.getElementById(p.s).getBoundingClientRect();
+                const e = document.getElementById(p.e).getBoundingClientRect();
+                const x1 = s.left + s.width/2 - rect.left;
+                const y1 = s.top + s.height/2 - rect.top;
+                const x2 = e.left + e.width/2 - rect.left;
+                const y2 = e.top + e.height/2 - rect.top;
+
+                let d = p.t 
+                    ? `M ${x1} ${y1} Q ${(x1+x2)/2} ${Math.max(y1, y2)+120} ${x2} ${y2}`
+                    : `M ${x1} ${y1} C ${x1+100} ${y1} ${x2-100} ${y2} ${x2} ${y2}`;
+
+                svg.innerHTML += `<path d="${d}" class="conduit ${p.t ? 'telemetry-conduit' : ''}" />`;
+                svg.innerHTML += `<path id="flow-${i}" d="${d}" class="pulse" stroke="${p.c}" />`;
+            });
+        }
+
+        async function startTrace() {
+            if(submitBtn.disabled) return;
+            submitBtn.disabled = true;
+            resetSystem();
+            
+            const tid = "XRAY-" + Math.random().toString(36).substr(2, 6).toUpperCase();
+            document.getElementById('trace-id').innerText = `ID: ${tid}`;
+            
+            const email = document.getElementById('email').value;
+
+            // 1. Validation Lambda
+            document.getElementById('node-val').classList.add('active-node');
+            document.getElementById('flow-0').classList.add('streaming');
+            writeLog(`START: Ingress received for ${email}`, "trigger");
+            await new Promise(r => setTimeout(r, 600));
+            document.getElementById('flow-5').classList.add('streaming');
+            writeLog(`CW: LambdaInvocations logged for Validator`, "cw");
+            updateMetric('inv', 1);
+            await new Promise(r => setTimeout(r, 600));
+
+            // 2. SQS Queue
+            document.getElementById('node-sqs').classList.add('active-node');
+            document.getElementById('flow-1').classList.add('streaming');
+            writeLog(`SQS: Message buffer accepted. Event ID: ${tid}`);
+            updateMetric('queue', 1);
+            await new Promise(r => setTimeout(r, 1000));
+
+            // 3. Process Lambda
+            document.getElementById('node-proc').classList.add('active-node');
+            document.getElementById('flow-2').classList.add('streaming');
+            writeLog(`LAMBDA: SQS Trigger fired. Processing business logic...`);
+            updateMetric('queue', 0);
+            await new Promise(r => setTimeout(r, 800));
+            document.getElementById('flow-6').classList.add('streaming');
+            writeLog(`CW: Processing metrics pushed to CloudWatch`, "cw");
+            updateMetric('inv', 2);
+            await new Promise(r => setTimeout(r, 800));
+
+            // 4. Persistence & SES
+            document.getElementById('node-db').classList.add('active-node');
+            document.getElementById('node-ses').classList.add('active-node');
+            document.getElementById('flow-3').classList.add('streaming');
+            document.getElementById('flow-4').classList.add('streaming');
+            writeLog(`DYNAMODB: PutItem success. Table state updated.`);
+            writeLog(`SES: Transactional email dispatched to customer.`, "success");
+            
+            document.getElementById('global-latency').innerText = Math.floor(Math.random() * 50 + 40) + 'ms';
+            writeLog(`END: System idle. Total trace duration: 3.2s`, "success");
+            submitBtn.disabled = false;
+        }
+
+        function updateMetric(id, val) {
+            const el = document.getElementById('m-' + id);
+            const box = document.getElementById('metric-box-' + (id === 'inv' ? '1' : '2'));
+            el.innerText = val;
+            box.classList.remove('metric-glow');
+            void box.offsetWidth; // trigger reflow
+            box.classList.add('metric-glow');
+        }
+
+        function resetSystem() {
+            document.querySelectorAll('[id^="node-"]').forEach(n => n.classList.remove('active-node', 'cw-node-active'));
+            document.querySelectorAll('.pulse').forEach(f => f.classList.remove('streaming'));
+            logStream.innerHTML = '';
+        }
+
+        window.onload = () => {
+            drawPaths();
+            setInterval(() => {}, 1000);
+        };
+        window.onresize = drawPaths;
+    </script>
+</body>
+</html>
