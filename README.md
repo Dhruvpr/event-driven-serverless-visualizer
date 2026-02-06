@@ -1,68 +1,72 @@
-🌐 Event-Driven Serverless Order Processing System
+Serverless Order System Architecture Visualization
 
-An immersive 3D visualization platform that demonstrates the lifecycle of an order within a serverless cloud environment. Built using Three.js, Tailwind CSS, and AWS Service Architecture principles.
+An interactive, live-animated dashboard built with React and Tailwind CSS that visualizes an event-driven AWS serverless architecture. This tool allows developers and stakeholders to understand the lifecycle of an order—from ingestion to fulfillment—through real-time simulations.
 
-🚀 Project Overview
+🚀 Key Features
 
-This project serves as an educational and monitoring tool to visualize the flow of data across a distributed serverless system. It bridges the gap between static architecture diagrams and real-world execution by animating the "events" that drive modern cloud applications.
+Live Flow Simulation: Click "Run Simulation" to watch data packets physically travel through the system tracks.
 
-✨ Key Features
+Interactive Component Inspector: Click any service (Lambda, SQS, DynamoDB) to see its specific role, availability settings, and technical metadata.
 
-3D Interactive Pipeline: A high-fidelity 3D scene where users can watch data packets navigate through a series of AWS services in real-time.
+Real-time Console: A monospaced terminal that logs system events (HTTP status, polling activity, DB commits) as they happen.
 
-Event-Driven Flow: Demonstrates the asynchronous "Fan-out" pattern, showing how a single process triggers parallel actions like database logging and email notifications.
+System Health HUD: A visual heads-up display showing mock metrics like Latency, Queue Depth, and Error Rates.
 
-Observability & Monitoring: Simulated integration with Amazon CloudWatch to show how logs are generated at every step for system health tracking.
+Modern Blueprint Aesthetic: A crisp light-theme design with a professional dot-grid canvas and Lucide-icon integration.
 
-Synchronized Context UI: A dynamic information panel that updates descriptions and highlights the active service as the animation progresses.
+🏗️ The Architecture
 
-Bright Mode Design: A clean, professional aesthetic using glassmorphism, fluid typography, and standard AWS iconography.
+This project visualizes a standard high-availability serverless pattern:
+
+Ingress: A Web Client sends a POST request to API Gateway.
+
+Validation: A SubmitOrder Lambda validates the payload and immediately returns a 202 Accepted while pushing the message to the queue.
+
+Buffering: Amazon SQS acts as a durable buffer to decouple the front end from the back end.
+
+Processing: The ProcessOrder Lambda polls the queue in batches to handle fulfillment.
+
+Storage & Notifications: Successful orders are written to DynamoDB, customers are notified via Amazon SES, and metrics are emitted to CloudWatch.
+
+Error Handling: Failed messages are automatically routed to a Dead Letter Queue (DLQ) for investigation.
 
 🛠️ Tech Stack
 
-Engine: Three.js (WebGL-based 3D Rendering)
+Framework: React
 
-Styling: Tailwind CSS (Responsive Layouts & UI Components)
+Styling: Tailwind CSS
 
-Visuals: AWS Architecture Icons (PlantUML)
+Icons: Lucide React
 
-Logic: Vanilla JavaScript (ES6+)
+Animations: CSS Keyframes & Tailwind Transitions
 
-📋 Architectural Workflow
+📥 Getting Started
 
-The application simulates the following seven-step event-driven sequence:
+Prerequisites
 
-Entry Point: User interaction starts via a Web Form or REST API call.
+Node.js (v18 or higher)
 
-API Gateway: The secure front-door that receives the HTTPS request and routes it to the backend.
+npm or yarn
 
-Order Validation (Lambda): A serverless function performs syntax checks and authorization logic.
-
-Resilience Queue (SQS): The order is stored in a message queue to decouple the producer from the consumer, ensuring no data loss during spikes.
-
-Process Engine (Lambda): The core logic function that consumes the queue message and triggers downstream events.
-
-Fan-out Execution:
-
-Persistence: Data is logged permanently into Amazon DynamoDB.
-
-Notification: A confirmation email is dispatched via Amazon SES.
-
-CloudWatch Logs: Centralized monitoring tracks every transaction for full system transparency.
-
-💻 Local Setup & Deployment
-
-Since this is a client-side web application, no backend installation or API keys are required to run the visualization.
+Installation
 
 Clone the repository:
 
-git clone [https://github.com/your-username/serverless-order-system.git]( https://dhruvpr.github.io/event-driven-serverless-visualizer/)
+git clone [https://github.com/your-username/serverless-arch-viz.git](https://github.com/your-username/serverless-arch-viz.git)
 
 
-Navigate to the folder:
+Install dependencies:
 
-cd serverless-order-system
+npm install
 
 
-Run the Project:
-Simply open index.html in any modern browser (Chrome, Safari, Firefox, or Edge).
+Start the development server:
+
+npm start
+
+
+📝 License
+
+This project is open-source and available under the MIT License.
+
+Built to make cloud architecture more accessible.
